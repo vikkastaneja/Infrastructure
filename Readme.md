@@ -22,3 +22,57 @@ The primary goal of this repository is to demonstrate an environment capable of 
 │   └── observability/    # OTel Collector, kube-prometheus-stack Helm configs
 └── load-test/            # k6 scripts for traffic generation and chaos testing
 ```
+
+## Getting Started
+
+1. **Prerequisites:**
+   * Docker / Minikube (for local testing)
+   * `kubectl`
+   * `helm`
+   * `aws-cli` (configured with IAM user credentials)
+   * `terraform`
+
+2. **Deployment**
+   Navigate to the `terraform/` directory to stand up the cluster:
+
+   ```bash
+   cd terraform
+   terraform init
+   terraform apply -auto-approve
+   ```
+
+   Update your local kubeconfig to point to the new remote cluster:
+
+   ```bash
+   aws eks update-kubeconfig --region <your-region> --name <cluster-name>
+   ```
+
+3. **Deploying Workloads & Observability**
+   Apply the baseline observability tools:
+
+   ```bash
+   helm repo add prometheus-community https://github.io
+   # ... full scripts located in manifests/observability
+   ```
+
+   Apply the microservices:
+
+   ```bash
+   kubectl apply -f manifests/apps/
+   ```
+
+4. **Chaos Testing**
+   Run the simulated load test and infrastructure failure scripts:
+
+   ```bash
+   cd load-test
+   ./chaos-script.sh
+   ```
+
+5. **Teardown**
+   CRITICAL: Prevent runaway AWS billing when terminating the test environment.
+
+   ```bash
+   cd terraform
+   terraform destroy -auto-approve
+   ```
