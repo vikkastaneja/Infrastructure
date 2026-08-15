@@ -29,44 +29,57 @@
 ## 7. Labels and Selectors
 * **What it is:** The primary mechanism Kubernetes uses to group objects together. Labels are key/value tags attached to objects (like Pods). Selectors are queries used by Services and Deployments to find those tagged objects.
 * **Where it is used:** This is how a Service knows *which* Pods it is abstracting over. If a Backend Service has a selector of `app: backend`, it will automatically route traffic to any Pod in the cluster that has the tag `app: backend`, instantly discovering new Pods as they spin up.
-* 
-## 8. Concept Interaction Diagram
 
-This diagram shows how these K8s components link together: how traffic flows in via Ingress, and how Deployments/HPA manage the underlying Pods.
+## 8. The Control Plane vs. Data Plane
+* **What it is:** Kubernetes architecture is strictly divided into two halves:
+    * **The Control Plane (The Brain):** Manages the cluster. It includes the API server (how you talk to K8s), `etcd` (the database storing cluster state), and the Scheduler (decides where Pods should go). 
+    * **The Data Plane / Worker Nodes (The Muscle):** The actual virtual/physical machines (EC2 instances) where your microservices (Pods) run.
+* **Why it is needed:** Separation of concerns and high availability. If a Worker Node running your app crashes under heavy load, it won't crash the management layer. The Control Plane survives, detects the crash, and reschedules the orphaned Pods onto a healthy Worker Node. 
+* **Where it is used (EKS Example):** In Amazon EKS, AWS completely hides and manages the Control Plane for you. You never see the API server or `etcd` nodes. You only pay for and manage the Data Plane (your managed EC2 worker nodes).
+* **Real-World Analogy:** Think of a restaurant. The Control Plane is the Manager/Host who takes reservations, assigns tables, and monitors staff, but never actually cooks. The Data Plane is the Kitchen Staff who executes the actual work (runs your containers).
+  
+## 9. Kubernetes Concept Topology
+
+This diagram strictly visualizes how the internal K8s objects map to each other, highlighting the separation between the Control Plane (the controllers) and the Data Plane (the physical execution).
 
 ```mermaid
-flowchart TD
-    ext((External Traffic)) --> Ingress
+flowchart TB
+    Client((Client/ALB)) --> Ingress
     
-    subgraph Kubernetes Cluster
-        Ingress["Ingress (Smart Router)"]
-        Service["Service (Internal Load Balancer)"]
+    subgraph K8S ["Kubernetes Boundary"]
         
-        Ingress -->|Routes traffic| Service
-        
-        subgraph Node 1 ["Worker Node 1"]
-            DS1[/"DaemonSet (e.g., OTel)"/]
-            Pod1("Pod (Replica 1)")
-            Pod2("Pod (Replica 2)")
+        subgraph Logical ["Abstraction Layer (Rules & Routing)"]
+            Ingress["Ingress"]
+            Service["Service (Matches via Selectors)"]
+            HPA["Horizontal Pod Autoscaler"]
+            Deploy["Deployment"]
+            RS["ReplicaSet"]
+            
+            Ingress -->|Routes to| Service
+            HPA -.->|Scales| Deploy
+            Deploy -.->|Manages| RS
         end
         
-        subgraph Node 2 ["Worker Node 2"]
-            DS2[/"DaemonSet (e.g., OTel)"/]
-            Pod3("Pod (Replica 3)")
+        subgraph Physical ["Data Plane (Worker Nodes)"]
+            subgraph Node1 ["EC2 Node 1"]
+                Pod1("Pod (app=frontend)")
+                Pod2("Pod (app=frontend)")
+                DS1[/"DaemonSet Pod"/]
+            end
+            
+            subgraph Node2 ["EC2 Node 2"]
+                Pod3("Pod (app=frontend)")
+                DS2[/"DaemonSet Pod"/]
+            end
         end
         
-        Service -->|Balances traffic| Pod1
-        Service -->|Balances traffic| Pod2
-        Service -->|Balances traffic| Pod3
+        %% Connections from logical to physical
+        Service -->|Balances| Pod1
+        Service -->|Balances| Pod2
+        Service -->|Balances| Pod3
         
-        Deployment["Deployment (Provides Rolling Updates)"]
-        ReplicaSet["ReplicaSet (Maintains Desired Count)"]
-        HPA["HPA (Horizontal Pod Autoscaler)"]
-        
-        HPA -.->|Watches metrics & triggers scaling| Deployment
-        Deployment -.->|Manages| ReplicaSet
-        ReplicaSet -.->|Spins up / kills| Pod1
-        ReplicaSet -.->|Spins up / kills| Pod2
-        ReplicaSet -.->|Spins up / kills| Pod3
+        RS -.->|Maintains count| Pod1
+        RS -.->|Maintains count| Pod2
+        RS -.->|Maintains count| Pod3
     end
 ```
