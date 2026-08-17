@@ -32,13 +32,35 @@
 
 ## 8. The Control Plane vs. Data Plane
 * **What it is:** Kubernetes architecture is strictly divided into two halves:
-    * **The Control Plane (The Brain):** Manages the cluster. It includes the API server (how you talk to K8s), `etcd` (the database storing cluster state), and the Scheduler (decides where Pods should go). 
+    * **The Control Plane (The Brain):** Manages the cluster. It includes the API server (how you talk to K8s), `etcd` (the database storing cluster state), and the Scheduler (decides where Pods should go).
     * **The Data Plane / Worker Nodes (The Muscle):** The actual virtual/physical machines (EC2 instances) where your microservices (Pods) run.
-* **Why it is needed:** Separation of concerns and high availability. If a Worker Node running your app crashes under heavy load, it won't crash the management layer. The Control Plane survives, detects the crash, and reschedules the orphaned Pods onto a healthy Worker Node. 
+* **Why it is needed:** Separation of concerns and high availability. If a Worker Node running your app crashes under heavy load, it won't crash the management layer. The Control Plane survives, detects the crash, and reschedules the orphaned Pods onto a healthy Worker Node.
 * **Where it is used (EKS Example):** In Amazon EKS, AWS completely hides and manages the Control Plane for you. You never see the API server or `etcd` nodes. You only pay for and manage the Data Plane (your managed EC2 worker nodes).
 * **Real-World Analogy:** Think of a restaurant. The Control Plane is the Manager/Host who takes reservations, assigns tables, and monitors staff, but never actually cooks. The Data Plane is the Kitchen Staff who executes the actual work (runs your containers).
-  
-## 9. Kubernetes Concept Topology
+
+## 9. Capacity Planning & Multi-Dimensional Scaling
+
+Kubernetes scaling happens on two distinct axes: scaling the application (Pods) and scaling the infrastructure (Nodes).
+
+### A. Capacity Planning (Requests & Limits)
+Before autoscaling can function, the cluster must understand the resource footprint of your application. This is defined in the Pod YAML:
+* **Requests (The Guarantee):** The minimum CPU/Memory required for the Pod to run. The Scheduler uses this to determine if a Node has enough free space to host the Pod. If no space exists, the Pod remains `Pending`.
+* **Limits (The Ceiling):** The maximum CPU/Memory the Pod is permitted to consume. Exceeding memory limits results in an immediate **OOMKilled** (Out Of Memory) pod termination. Exceeding CPU results in throttling.
+
+### B. Workload Scaling (Application Level)
+* **Horizontal Pod Autoscaler (HPA):** Scales *out*. It watches metrics (like CPU crossing 60%) and adds more identical Pod replicas to the Deployment to distribute the load.
+* **Vertical Pod Autoscaler (VPA):** Scales *up*. It increases the CPU/Memory limits of existing Pods rather than adding new ones. (Rarely used concurrently with HPA on the same metric).
+* **KEDA (Kubernetes Event-driven Autoscaling):** An advanced controller that allows HPA to scale based on external events (e.g., the depth of a Kafka topic or AWS SQS queue) rather than just raw CPU usage.
+
+### C. Infrastructure Scaling (Node Level)
+When the HPA demands new Pods but all underlying EC2 nodes are full, those Pods enter a `Pending` state.
+* **Cluster Autoscaler (CA):** Watches the K8s scheduler. The instant it spots a `Pending` Pod due to insufficient capacity, it commands AWS to boot up a new EC2 instance and join it to the cluster.
+* **Karpenter:** A modern, highly-performant alternative to CA built by AWS. It bypasses rigid Auto Scaling Groups and provisions the exact right size/type of EC2 instance "just-in-time" based on the specific scheduling constraints of the `Pending` pods.
+
+***The Complete Flow:***
+Traffic spikes -> CPU spikes -> HPA creates new Pods -> Pods go `Pending` -> CA/Karpenter provisions new EC2 Node -> Pods are scheduled -> System stabilizes.
+
+## 10. Kubernetes Concept Topology
 
 This diagram strictly visualizes how the internal K8s objects map to each other, highlighting the separation between the Control Plane (the controllers) and the Data Plane (the physical execution).
 
